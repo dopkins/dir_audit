@@ -1,0 +1,5 @@
+To do - dvd audit
+--------------------------
+1. documentation table with path/name and creation date (do at work - script half done)
+2. file tree visualized (do here)
+3. html file list with link tree (do here, could be cool)
