@@ -10,13 +10,14 @@ for root, dirs, files in os.walk('./'):
         if f.endswith('.pdf'):
             fullpath = os.path.join(root, f)
             printpath = fullpath.decode('iso-8859-1')
-            doc = pdf(open(fullpath, 'rb'))
+            docfile = open(fullpath, 'rb')
+            doc = pdf(docfile)
             try:
                 rawdate = doc.getDocumentInfo()['/CreationDate'][2:10]
                 doku_list.append(printpath + "</td><td>{0}-{1}-{2}".format(rawdate[:4],rawdate[4:6],rawdate[6:]))
             except:
                 doku_list.append(printpath + "</td><td bgcolor='red'>Couldn't get info")
-            
+            docfile.close()
 
 
 # write log file                      
