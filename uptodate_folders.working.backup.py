@@ -22,41 +22,54 @@ def getMd5(filename):
 
 # Go through the dict of dvd dirs and fs dirs, hash check each directory
 
-def list_unchecked_folders(dirlist, startfolder, subpath=''):
+def list_unchecked_folders(dirlist, startfolder):
     """walks through the start folder one more time and creates a list of excluded dirs"""
-    dirs_in_config = [] # misnomer here, but used to generate list of all dirs with files to check against config
-    dirs_really_not_in_config = []
-    traverse_dir(startfolder, dirs_in_config, len(startfolder))
-    for d in dirs_in_config:
-        if d not in dirlist:
-            dirs_really_not_in_config.append(d)
+    temp_dirs_dict = {}
+    not_checked = []
+    for root, dirs, files in os.walk(startfolder):
+        for d in dirs:
+
+            for f in os.listdir(os.path.join(root,d)):
+
+                
+                if os.path.isfile(os.path.join(root,d, f)) and not f.endswith('.pdf') and not f.endswith('.html'):
+                    temp_dirs_dict[os.path.join(root,d)] = 'placeholder'
+    for check_dir in temp_dirs_dict.iterkeys():
+        print check_dir
+        if check_dir[len(startfolder):] not in dirlist:
+            not_checked.append(check_dir[len(startfolder):])
     print 'final dir check done'
-    return dirs_really_not_in_config
-    #return ['1','2']
+    return not_checked
 
 
-def check_sameness(dirlist, startfolder, verbose=False): # Note: maybe add "verbose" option later - probably not needed though...
+def check_sameness(dirlist, startfolder): # Note: maybe add "verbose" option later - probably not needed though...
     files_log = []
+    #simplelog = open('test.txt', 'w')
     for each_dir in dirlist.iterkeys():
         for root, dirs, files in os.walk(os.path.join(startfolder,each_dir)):
             for f in files:
+                #simplelog.write(os.path.join(root,f) + '\n')
                 other_path_file = dirlist[each_dir] + '\\' + root[len(os.path.join(startfolder,each_dir)):] + '\\' + f
-                # Note: can't use os.path.join for other_path_file because of \\  / mixing...
+                # Note: can't use os.path.join for other_path_file because of \\  / mixing :-/
+                #simplelog.write(other_path_file + '\n')
 
                 # Extract path/subfolders from the starting folder, discard folders up to the subpath from key
                 # Then put it on the end of the FS_path component and add the file
-                path_without_startfolder = os.path.join(root,f)[len(startfolder):]
                 if os.path.exists(other_path_file):
                     dvdmd5 = getMd5(os.path.join(root,f))
                     fsmd5 = getMd5(other_path_file)
+                    #simplelog.write(dvdmd5 + '\n')
+                    #simplelog.write(fsmd5 + '\n')
                     if dvdmd5 == fsmd5:
-                        if verbose:
-                            files_log.append( path_without_startfolder + '</td><td bgcolor="green">-- files match')
-                        pass 
+                        pass #simplelog.write('md5 match\n')
                     else:
-                        files_log.append(path_without_startfolder + '</td><td bgcolor="red">MD5 MISMATCH')
+                        files_log.append(os.path.join(root,f)[len(startfolder):] + '</td><td bgcolor="red">MD5 MISMATCH')
+                        #simplelog.write('md5 NO MATCH\n')
                 else:
-                    files_log.append(path_without_startfolder + '</td><td bgcolor="orange">Datei nicht gefunden!')
+                    files_log.append(os.path.join(root,f)[len(startfolder):] + '</td><td bgcolor="orange">Datei nicht gefunden!')
+                    #simplelog.write('File on alt path doesn\'t exist!!!\n')
+                #simplelog.write('\n\n')
+    #simplelog.close()
     print 'hash check done'
     return files_log
     
@@ -67,39 +80,61 @@ def prettify(elem):
     reparsed = minidom.parseString(rough_string)
     return reparsed.toprettyxml(indent='  ')
 
-# find folders that contain files that aren't only html or pdf.
-# once one of these folders is found, skip to next folder.
-# needed because os.walk doesn't do the job for my purposes.
-def traverse_dir(currfolder='.', dirs_in_config=[], len_cutoff=0):
-    file_found = False
-    for f in os.listdir(currfolder): # Add a dir to the list if it contains appropriate files and hasn't been added yet
-        if os.path.isfile(os.path.join(currfolder,f)) and not f.endswith('.pdf') and not f.endswith('.html') and file_found == False:
-            if len(currfolder) != len_cutoff: # don't stop the recursive check with the dvd base dir
-                dirs_in_config.append(currfolder[len_cutoff:])
-                file_found = True
-    if file_found == False: # If the dir wasn't added to the list, go through the dir again and rerun the test on all child dirs
-        for d in os.listdir(currfolder):
-            if os.path.isdir(os.path.join(currfolder,d)):
-                traverse_dir(os.path.join(currfolder,d), dirs_in_config, len_cutoff)
-        
-            
 
 # create a dvd file map, if it doesn't yet exist
 def create_config(startfolder):
     configfile = codecs.open('config.xml', 'w', 'utf-8')
     
     xmlroot = ET.Element('config')
-    dirs_in_config = []
-    #traverse_dir(os.path.join(startfolder,'Start'),dirs_in_config, len(startfolder)) # run the test from 'DVD_NAME'\'Start' or else it will stop in the root dir
-    traverse_dir(startfolder,dirs_in_config,len(startfolder))
-    for key in dirs_in_config: # convert dict to xml
+    dirs_with_files = {}
+    for root, dirs, files in os.walk(startfolder): # inefficiently create a dict entry for each dir* with a (non-PDF) file
+        for d in dirs:
+            for entry in os.listdir(os.path.join(root,d)):
+                tmp_p = os.path.join(root,d,entry)
+                print tmp_p
+                if os.path.isfile(tmp_p) and not entry.endswith('.pdf') and tmp_p.count('\\') in [5,6] :
+                    # *Note: only take 'level 6 Dateiebene' files into account. e.g.
+                    # Start\Client\Java\Install\Java_linux\ELO_Java_Client_Linux.zip.
+                    # IMPORTANT: all directories before "Start" must use forward slashes, or else you need to
+                    # adjust the control.
+                    dirs_with_files[os.path.join(root,d)[len(startfolder):].decode('cp1252')] = '  '
+                    continue
+    for key in dirs_with_files.iterkeys(): # convert dict to xml
         item = ET.SubElement(xmlroot, 'item')
         dvd_path = ET.SubElement(item, 'dvd_path')
         dvd_path.text = key
         fs_path = ET.SubElement(item, 'fs_path')
         fs_path.text = '  '
     configfile.write(prettify(xmlroot))
-    print 'Config created'  
+    print 'Config created'
+
+# Check the config file against the DVD to make sure it contains all items
+# Note: This is buggy and possibly undesirable.. remove?
+def update_config(dirlist, configfile, startfolder):
+    try:
+        tree = ET.parse(configfile)
+    except:
+        print 'problem encountered, exiting.'
+        sys.exit(0)
+    xmlroot = tree.getroot()
+    reload_config = False
+    for root, dirs, files in os.walk(startfolder):
+        for d in dirs:
+            if d.lower() in langs():
+                foldername = os.path.join(root,d)[len(startfolder):].decode('cp1252')
+                if foldername not in dirlist:
+                    print 'added config item: ' + foldername
+                    item = ET.SubElement(xmlroot, 'item')
+                    dvd_path = ET.SubElement(item, 'dvd_path')
+                    dvd_path.text = foldername
+                    fs_path = ET.SubElement(item, 'fs_path')
+                    fs_path.text = '  '
+                    reload_config = True
+    if reload_config:
+        codecs.open(configfile, 'w', 'utf-8').write(xmlroot)
+        read_config(configfile)
+                    
+                    
 
 # read the config items into a dict
 def read_config(configfile):
@@ -141,7 +176,8 @@ if not os.path.exists(configfile):
     create_config(startfolder)
 else:
     config = read_config(configfile)
-    hash_results = check_sameness(config, startfolder, True)
+    #update_config(config, configfile, startfolder)
+    hash_results = check_sameness(config, startfolder)
     unchecked_folders = list_unchecked_folders(config, startfolder)
     write_log(hash_results, unchecked_folders)
     print 'Operations complete.'
